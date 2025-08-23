@@ -297,7 +297,7 @@ void CalculatePhysics(Shape& shape)
 
 int main() {
     //======================Create Window=======================//
-    RenderWindow window(VideoMode({ 1920, 1080 }), "Particle Bouncing - SFML 3");
+    RenderWindow window(VideoMode({ 1920, 1080 }), "Soft Smooth Body ;)");
 
 
 
@@ -313,14 +313,14 @@ int main() {
 
     vector<Point> points;
 
-    points.push_back({ {500.f, 300.f} }); // top
+    //points.push_back({ {500.f, 300.f} }); // top
     //points.push_back({ {579.f, 317.f} });
     //points.push_back({ {641.f, 370.f} });
-    //points.push_back({ {679.f, 450.f} });
+    points.push_back({ {679.f, 450.f} });
     points.push_back({ {679.f, 550.f} });
-    //points.push_back({ {641.f, 630.f} });
-    //points.push_back({ {579.f, 683.f} });
-    points.push_back({ {500.f, 700.f} }); // bottom
+    points.push_back({ {641.f, 630.f} });
+    points.push_back({ {579.f, 683.f} });
+    //points.push_back({ {500.f, 700.f} }); // bottom
     //points.push_back({ {421.f, 683.f} });
     //points.push_back({ {359.f, 630.f} });
     points.push_back({ {321.f, 550.f} });
