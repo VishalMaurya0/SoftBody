@@ -1,0 +1,33 @@
+# Build outputs
+Debug/
+Release/
+x64/
+*.exe
+*.dll
+*.obj
+*.pdb
+*.lib
+
+# Visual Studio files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+.vs/
+
+# Build folders
+x64/
+Debug/
+Release/
+
+# User-specific
+*.suo
+*.user
+*.db
+*.opendb
+*.VC.db
