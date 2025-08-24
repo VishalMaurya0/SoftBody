@@ -4,7 +4,10 @@
 #include <SFML/Graphics.hpp>
 #include <optional> // needed for std::optional
 #include <cmath> // needed for sqrt, atan2, sin, cos
+#include <chrono>
+#include <thread>
 #include "SoftBody.h"
+#include <iostream>
 
 using sf::Vector2f;
 using sf::Color;
@@ -46,22 +49,25 @@ struct Spring
 
 struct Shape {
     vector<Point> points;
-    Vector2f centerOfMass;
-    Color color = Color::White;
-
     bool isSoftBody = true;
+    float stiffness;
     bool staticBody = false;
+    Color color = Color::White;
 
     vector<Spring> springs;
 
+    Vector2f centerOfMass;
     float angularVelocity = 0.f;
     float torque = 0.f;
     float momentOfInertia = 0.f;
+    Vector2f addForce = {0.f, 0.f};
 
 
-    Shape(const vector<Point>& points, const bool isSoftBody) {
+
+    Shape(const vector<Point>& points, const bool isSoftBody, const float stiiffness = 2) {
         this->isSoftBody = isSoftBody;
         this->points = points;
+        this->stiffness = stiiffness;
         CalculateCenterOfMass();
         CreateSprings();
     }
@@ -99,8 +105,8 @@ private:
             int nextPointIndex = (i + 1) % points.size();
             int nextNextPointIndex = (i + 2) % points.size();
 
-            springs.push_back(Spring(points[pointIndex], points[nextPointIndex], isSoftBody?3:500));
-            springs.push_back(Spring(points[pointIndex], points[nextNextPointIndex], isSoftBody?3:500));
+            springs.push_back(Spring(points[pointIndex], points[nextPointIndex], isSoftBody?stiffness:500));
+            springs.push_back(Spring(points[pointIndex], points[nextNextPointIndex], isSoftBody?stiffness:500));
         }
     }
 
@@ -108,6 +114,12 @@ public:
     void ApplyTorque(float t)
     {
         torque += t;
+    }
+
+public:
+    void ApplyForce(float t)
+    {
+        addForce += {0, t};
     }
 };
 
@@ -244,6 +256,7 @@ void CalculatePhysics(Shape& shape)
 
         point.force += {0, 9.8f};
         point.force += point.addForce;
+        point.force += shape.addForce / (float)shape.points.size();
         point.addForce = {0, 0};
 
         if (point.force != Vector2f(0,0))
@@ -265,6 +278,7 @@ void CalculatePhysics(Shape& shape)
         float torque = r.x * point.force.y - r.y * point.force.x; 
         shape.torque += torque; 
     }
+    shape.addForce = { 0,0 };
 
     //--------NOw Torque------//
     if (!shape.staticBody && shape.momentOfInertia > 0.f)
@@ -304,6 +318,16 @@ int main() {
 
 
     //======================Initialize========================//
+    
+    
+    //======================FPS Tracker=========================//
+    using clock = std::chrono::high_resolution_clock;
+    auto lastTime = clock::now();
+    int frames = 0;
+    
+    
+    
+
     Point p1 = { {500.f, 350.f} };   // top
     Point p2 = { {400.f, 400.f} };   // top-left
     Point p3 = { {400.f, 600.f} };   // bottom-left
@@ -313,24 +337,24 @@ int main() {
 
     vector<Point> points;
 
-    //points.push_back({ {500.f, 300.f} }); // top
+    points.push_back({ {500.f, 300.f} }); // top
     //points.push_back({ {579.f, 317.f} });
     //points.push_back({ {641.f, 370.f} });
     points.push_back({ {679.f, 450.f} });
-    points.push_back({ {679.f, 550.f} });
+    //points.push_back({ {679.f, 550.f} });
     points.push_back({ {641.f, 630.f} });
     points.push_back({ {579.f, 683.f} });
-    //points.push_back({ {500.f, 700.f} }); // bottom
+    points.push_back({ {500.f, 700.f} }); // bottom
     //points.push_back({ {421.f, 683.f} });
-    //points.push_back({ {359.f, 630.f} });
+    points.push_back({ {359.f, 630.f} });
     points.push_back({ {321.f, 550.f} });
     points.push_back({ {321.f, 450.f} });
-    points.push_back({ {359.f, 370.f} });
-    points.push_back({ {421.f, 317.f} });
+    //points.push_back({ {359.f, 370.f} });
+    //points.push_back({ {421.f, 317.f} });
     //points.push_back({ {500.f, 300.f} }); // repeat first point if you want closed loop
 
 
-    Shape shape(points, true);
+    Shape shape(points, true, 0.5);
 
     p1 = { {50.f, 50.f} };
     p2 = { {1000.f, 50.f} };
@@ -371,10 +395,13 @@ int main() {
         HandleShapeCollision(shape, shape2);
 
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left)) {
-            shape.ApplyTorque(-2000.f);
+            shape.ApplyTorque(-10000.f);
         }
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Right)) {
-            shape.ApplyTorque(2000.f);
+            shape.ApplyTorque(10000.f);
+        }
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Space)) {
+            shape.ApplyForce(-300.f);
         }
 
 
@@ -390,6 +417,19 @@ int main() {
         DrawShapeOnScreen(window, shape);
         DrawShapeOnScreen(window, shape2);
         window.display();
+
+
+
+        // FPS counter
+        frames++;
+        auto now = clock::now();
+        std::chrono::duration<float> elapsed = now - lastTime;
+
+        if (elapsed.count() >= 1.0f) { // every second
+            std::cout << "FPS: " << frames << std::endl;
+            frames = 0;
+            lastTime = now;
+        }
     }
 
 
