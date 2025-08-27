@@ -30,6 +30,16 @@ struct Point
     Vector2f addForce;
 
     float mass = 1;
+
+    Color color = Color::White;
+};
+
+struct Edge
+{
+    Point* point1;
+    Point* point2;
+
+    Color color = Color::White;
 };
 
 struct Spring
@@ -47,20 +57,23 @@ struct Spring
 
 
 
-struct Shape {
-    vector<Point> points;
-    bool isSoftBody = true;
-    float stiffness;
-    bool staticBody = false;
-    Color color = Color::White;
+class Shape {
+    public: vector<Point> points;
+    public: bool isSoftBody = true;
+    public: float stiffness;
+    public: bool staticBody = false;
+    public: Color color = Color::White;
+    
+// Stored Data
+    public: vector<Spring> springs;
+    public: vector<Edge> edges;
 
-    vector<Spring> springs;
-
-    Vector2f centerOfMass;
-    float angularVelocity = 0.f;
-    float torque = 0.f;
-    float momentOfInertia = 0.f;
-    Vector2f addForce = {0.f, 0.f};
+// Dynamic Data
+    public: Vector2f centerOfMass;
+    public: float angularVelocity = 0.f;
+    public: float torque = 0.f;
+    public: float momentOfInertia = 0.f;
+public: Vector2f addForce = {0.f, 0.f};
 
 
 
@@ -70,6 +83,7 @@ struct Shape {
         this->stiffness = stiiffness;
         CalculateCenterOfMass();
         CreateSprings();
+        CreateEdges();
     }
 
 public:
@@ -96,6 +110,18 @@ public:
         }
     }
 
+public:
+    float CalculateMomentOfInertia()
+    {
+        float momentOfInertia = 0.f;
+        for (auto& point : points) {
+            Vector2f r = point.pos - centerOfMass;
+            float dist2 = r.x * r.x + r.y * r.y;
+            momentOfInertia += point.mass * dist2;
+        }
+        return momentOfInertia;
+    }
+
 private:
     void CreateSprings()
     {
@@ -110,6 +136,18 @@ private:
         }
     }
 
+private:
+    void CreateEdges()
+    {
+        for (size_t i = 0; i < points.size(); i++)
+        {
+            int pointIndex = i;
+            int nextPointIndex = (i + 1) % points.size();
+
+            edges.push_back(Edge(&points[pointIndex], &points[nextPointIndex]));
+        }
+    }
+
 public:
     void ApplyTorque(float t)
     {
@@ -117,9 +155,9 @@ public:
     }
 
 public:
-    void ApplyForce(float t)
+    void ApplyForce(Vector2f t)
     {
-        addForce += {0, t};
+        addForce += t;
     }
 };
 
@@ -162,7 +200,7 @@ void DrawShapeOnScreen(RenderWindow& window, const Shape& shape)
         int nextNextPointIndex = (i + 2) % shape.points.size();
 
 
-        RectangleShape line = CreateThickLine(shape.points[pointIndex].pos, shape.points[nextPointIndex].pos, 5.0, Color::White);
+        RectangleShape line = CreateThickLine(shape.points[pointIndex].pos, shape.points[nextPointIndex].pos, 5.0, shape.edges[i].color);
         RectangleShape line2 = CreateThickLine(shape.points[pointIndex].pos, shape.points[nextNextPointIndex].pos, 2.0, Color::Yellow);
 
         window.draw(line);
@@ -179,6 +217,7 @@ void DrawShapeOnScreen(RenderWindow& window, const Shape& shape)
 
     for (const auto& point : shape.points) {
         pointCircle.setPosition(point.pos);
+        pointCircle.setFillColor(point.color);
         window.draw(pointCircle);
     }
 }
@@ -219,7 +258,251 @@ void HandleShapeCollision(Shape& innerShape, const Shape& outerShape) {
     }
 }
 
+struct ClosestEdgeToPoint
+{
+    Edge* edge = nullptr;
+    float distance = FLT_MAX;
+    bool inside = false;
+    Vector2f directionToEdge = Vector2f();
+	Vector2f closestPoint = Vector2f();
+    Vector2f edgeDir = Vector2f();
+};
 
+ClosestEdgeToPoint GetClosestEdge(const Vector2f& point, Shape& shape) 
+{
+    ClosestEdgeToPoint result;
+    bool hasEdge = false;
+    
+    // First pass: find the closest edge and determine if point is inside
+    int intersections = 0;
+    
+    for (Edge& edge : shape.edges)
+    {
+        Vector2f p1 = edge.point1->pos;
+        Vector2f p2 = edge.point2->pos;
+        
+        // Check for ray intersection (for point-in-polygon test)
+        if ((p1.y > point.y) != (p2.y > point.y)) {
+            float x_intersect = (point.y - p1.y) * (p2.x - p1.x) / (p2.y - p1.y) + p1.x;
+            if (x_intersect > point.x) {
+                intersections++;
+            }
+        }
+        
+        // Find closest point on this edge
+        Vector2f edgeVec = p2 - p1;
+        float edgeLength = edgeVec.length();
+        
+        if (edgeLength < 0.0001f) continue; // Skip zero-length edges
+        
+        Vector2f edgeDir = edgeVec / edgeLength;
+        Vector2f p1toPoint = point - p1;
+        
+        // Project point onto edge
+        float projection = p1toPoint.dot(edgeDir);
+        projection = std::max(0.0f, std::min(edgeLength, projection));
+        
+        // Find closest point on edge
+        Vector2f closestPoint = p1 + edgeDir * projection;
+        Vector2f toPoint = closestPoint - point;
+        float distance = toPoint.length();
+        
+        if (!hasEdge || distance < result.distance) {
+            // Calculate direction to edge (pointing away from the shape)
+            Vector2f direction = closestPoint - point;
+            float dirLength = direction.length();
+            
+            if (dirLength > 0.0001f) {
+                result.directionToEdge = direction / dirLength;
+            } else {
+                // If point is on the edge, use edge normal
+                result.directionToEdge = Vector2f(-edgeDir.y, edgeDir.x);
+            }
+            
+            result.distance = distance;
+            result.edge = &edge;
+            result.closestPoint = closestPoint;
+            result.edgeDir = edgeDir;
+            hasEdge = true;
+        }else if (!hasEdge || distance == result.distance)
+        {
+            Vector2f direction = closestPoint - point;
+            float dirLength = direction.length();
+            if (abs(direction.dot(edgeDir)) < abs(direction.dot(result.edgeDir)))
+            {
+                if (dirLength > 0.0001f) {
+                    result.directionToEdge = direction / dirLength;
+                } else {
+                    // If point is on the edge, use edge normal
+                    result.directionToEdge = Vector2f(-edgeDir.y, edgeDir.x);
+                }
+                
+                result.distance = distance;
+                result.edge = &edge;
+                result.closestPoint = closestPoint;
+                result.edgeDir = edgeDir;
+                hasEdge = true;
+            }
+        }
+    }
+    
+    // Point is inside if number of intersections is odd
+    result.inside = (intersections % 2 == 1);
+    
+    return result;
+}
+
+
+
+void HandleSoftBodyCollision(Shape& shapeA, Shape& shapeB)
+{
+    const float collisionDistance = 15.0f;
+    const float restitution = 0.6f; 
+    const float friction = 0.4f;    
+    int i = 0;
+    for (auto& pointA : shapeA.points) {
+        // Skip if point has infinite mass (static)
+        if (pointA.mass <= 0.0f) continue;
+        
+        // Get closest edge on shapeB to this point
+        ClosestEdgeToPoint closestEdge = GetClosestEdge(pointA.pos, shapeB);
+
+
+
+        if (!closestEdge.edge) continue; // Skip if no valid edge found
+
+        // Calculate edge properties
+        Vector2f edgeVec = closestEdge.edge->point2->pos - closestEdge.edge->point1->pos;
+        float edgeLength = edgeVec.length();
+        if (edgeLength < 0.0001f) continue; // Skip zero-length edges
+        
+        Vector2f edgeDir = closestEdge.edgeDir;
+        Vector2f directionToEdge = closestEdge.directionToEdge;
+        
+        // Calculate projection of point onto edge
+        Vector2f p1ToPoint = pointA.pos - closestEdge.edge->point1->pos;
+        float projection = p1ToPoint.dot(edgeDir);
+        
+        // Calculate collision depth
+        float depth = collisionDistance - abs(closestEdge.distance);
+
+        if (closestEdge.inside)
+        {
+            pointA.color = Color::Red;
+
+
+            // Take it outt
+            Vector2f correctionVec = directionToEdge * (abs(closestEdge.distance) + collisionDistance * 0.99f);
+            
+            pointA.pos += correctionVec;
+        }else
+        {
+            pointA.color = Color::White;
+        }
+
+        //visual
+        if (i == 0) {
+            for (auto& edge : shapeB.edges)
+            {
+                edge.color = Color::White;
+            }
+            closestEdge.edge->color = Color::Cyan;
+            pointA.color = Color::Cyan;
+        }
+        i++;
+
+        // Skip if projection is outside edge bounds
+        if (projection < 0 || projection > edgeLength) continue;
+        
+        if (depth <= 0) continue; // No collision
+        
+
+        // Skip if edge direction is invalid
+        if (std::isnan(projection)) {
+            continue;
+        }
+        
+        Vector2f pointVelocity = pointA.velocity;
+        
+        float velPerpendicular = pointVelocity.dot(directionToEdge);
+        if (velPerpendicular > -0.1f) continue; // Small threshold to prevent jitter
+        
+        float e = std::min(restitution, 1.0f);
+        float j = -(1.0f + e) * velPerpendicular;
+        float pointMass = pointA.mass;
+
+        float mass1 = closestEdge.edge->point1->mass;
+        float mass2 = closestEdge.edge->point2->mass;
+        
+                //Appply Stop 
+        
+        //// Apply friction (tangential impulse)
+        //Vector2f frictionImpulse(0, 0);
+        //if (j > 0.0001f) {
+        //    Vector2f tangent = Vector2f(-normal.y, normal.x);
+        //    float jt = -pointVelocity.dot(tangent);
+        //    jt *= (invMassA + invMassB);
+        //    
+        //    // Coulomb's law for friction
+        //    float maxFriction = j * friction;
+        //    if (std::abs(jt) < maxFriction) {
+        //        frictionImpulse = tangent * jt;
+        //    } else {
+        //        frictionImpulse = tangent * (-maxFriction);
+        //    }
+        //    
+        //    // Apply friction impulse
+        //    if (frictionImpulse.length() > 0.0001f) {
+        //        pointA.velocity += frictionImpulse * invMassA;
+        //        
+        //        if (!shapeB.staticBody) {
+        //            float ratio = projection / edgeLength;
+        //            ratio = std::max(0.0f, std::min(1.0f, ratio));
+        //            float invRatio = 1.0f - ratio;
+        //            
+        //            closestEdge.edge->point1->velocity -= frictionImpulse * (invRatio * invMassB);
+        //            closestEdge.edge->point2->velocity -= frictionImpulse * (ratio * invMassB);
+        //        }
+        //    }
+        //}
+        
+        //pointA.velocity += frictionImpulse / pointA.mass;
+        
+        // Apply torque to shapeA from collision if impulse is non-zero
+        if (impulse.length() > 0.0001f) {
+            Vector2f r = pointA.pos - shapeA.centerOfMass;
+            float torque = r.cross(impulse /*+ frictionImpulse*/) * 0.1f;
+            float momentOfInertia = shapeA.CalculateMomentOfInertia();
+            if (momentOfInertia > 0.0001f) {
+                shapeA.angularVelocity += torque / momentOfInertia;
+            }
+        }
+        
+        // Apply reaction forces to shapeB if it's not static
+        if (!shapeB.staticBody) {
+            // Distribute impulse to edge points based on projection
+            float ratio = projection / edgeLength;
+            float invRatio = 1.0f - ratio;
+            
+            // Apply impulses to edge points
+            closestEdge.edge->point1->velocity += (-impulse * invRatio) / closestEdge.edge->point1->mass;
+            closestEdge.edge->point2->velocity += (-impulse * ratio) / closestEdge.edge->point2->mass;
+            
+            // Apply torque to shapeB if impulse is non-zero
+            if (impulse.length() > 0.0001f) {
+                Vector2f r1 = closestEdge.edge->point1->pos - shapeB.centerOfMass;
+                Vector2f r2 = closestEdge.edge->point2->pos - shapeB.centerOfMass;
+                float torque1 = r1.cross(-impulse * invRatio) * 0.1f;
+                float torque2 = r2.cross(-impulse * ratio) * 0.1f;
+                float momentOfInertia = shapeB.CalculateMomentOfInertia();
+                if (momentOfInertia > 0.0001f) {
+                    shapeB.angularVelocity += (torque1 + torque2) / momentOfInertia;
+                }
+            }
+        }
+        
+    }
+}
 
 
 
@@ -325,41 +608,40 @@ int main() {
     auto lastTime = clock::now();
     int frames = 0;
     
-    
-    
-
-    Point p1 = { {500.f, 350.f} };   // top
-    Point p2 = { {400.f, 400.f} };   // top-left
-    Point p3 = { {400.f, 600.f} };   // bottom-left
-    Point p4 = { {500.f, 650.f} };   // bottom
-    Point p5 = { {600.f, 600.f} };   // bottom-right
-    Point p6 = { {600.f, 400.f} };   // top-right
 
     vector<Point> points;
 
     points.push_back({ {500.f, 300.f} }); // top
-    //points.push_back({ {579.f, 317.f} });
-    //points.push_back({ {641.f, 370.f} });
-    points.push_back({ {679.f, 450.f} });
+    points.push_back({ {579.f, 317.f} });
+    points.push_back({ {641.f, 370.f} });
+    //points.push_back({ {679.f, 450.f} });
     //points.push_back({ {679.f, 550.f} });
-    points.push_back({ {641.f, 630.f} });
+    //points.push_back({ {641.f, 630.f} });
     points.push_back({ {579.f, 683.f} });
     points.push_back({ {500.f, 700.f} }); // bottom
     //points.push_back({ {421.f, 683.f} });
-    points.push_back({ {359.f, 630.f} });
+    //points.push_back({ {359.f, 630.f} });
     points.push_back({ {321.f, 550.f} });
     points.push_back({ {321.f, 450.f} });
     //points.push_back({ {359.f, 370.f} });
-    //points.push_back({ {421.f, 317.f} });
+    points.push_back({ {421.f, 317.f} });
     //points.push_back({ {500.f, 300.f} }); // repeat first point if you want closed loop
+    Shape shape(points, false);
+
+    // ----- second shape placed next to first (shifted by +250 on X axis) -----
+    Point q1 = { {350.f, 100.f} };
+    Point q2 = { {350.f, 200.f} };
+    Point q3 = { {400.f, 180.f} };
+    Point q4 = { {450.f, 200.f} };
+    Point q5 = { {450.f, 100.f} };
+    std::vector<Point> points2 = { q1, q2, /*q3, */q4, q5 };
+    Shape shapeB(points2, false);  // second shape
 
 
-    Shape shape(points, true, 0.5);
-
-    p1 = { {50.f, 50.f} };
-    p2 = { {1000.f, 50.f} };
-    p3 = { {1000.f, 1000.f} };
-    p4 = { {50.f, 1000.f} };
+    Point p1 = { {50.f, 50.f} };
+    Point p2 = { {1500.f, 50.f} };
+    Point p3 = { {1500.f, 1000.f} };
+    Point p4 = { {50.f, 1000.f} };
 
     points.clear();
     points.push_back(p1);
@@ -367,9 +649,9 @@ int main() {
     points.push_back(p3);
     points.push_back(p4);
 
-    Shape shape2(points, false);
+    Shape boundaryShape(points, false);
 
-    shape2.staticBody = true;
+    boundaryShape.staticBody = true;
 
 
 
@@ -392,16 +674,28 @@ int main() {
         }
 
         CalculatePhysics(shape);
-        HandleShapeCollision(shape, shape2);
+        CalculatePhysics(shapeB);
 
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left)) {
+        HandleShapeCollision(shape, boundaryShape);
+        HandleShapeCollision(shapeB, boundaryShape);
+
+		HandleSoftBodyCollision(shape, shapeB);
+		HandleSoftBodyCollision(shapeB, shape);
+
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up)) {
             shape.ApplyTorque(-10000.f);
         }
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Right)) {
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down)) {
             shape.ApplyTorque(10000.f);
         }
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left)) {
+            shape.ApplyForce({ -50, 0 });
+        }
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Right)) {
+            shape.ApplyForce({ 50, 0 });
+        }
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Space)) {
-            shape.ApplyForce(-300.f);
+            shape.ApplyForce({0, -300.f });
         }
 
 
@@ -415,7 +709,11 @@ int main() {
         window.clear(Color::Black);
         //DrawShapeWithPoints(window, shape);
         DrawShapeOnScreen(window, shape);
-        DrawShapeOnScreen(window, shape2);
+        DrawShapeOnScreen(window, boundaryShape);
+        DrawShapeOnScreen(window, shapeB);
+
+        
+        window.setFramerateLimit(1000);
         window.display();
 
 
