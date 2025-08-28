@@ -421,6 +421,7 @@ void HandleSoftBodyCollision(Shape& shapeA, Shape& shapeB)
 
             // Take it outt
             Vector2f correctionVec = directionToEdge * (abs(closestEdge.distance) + collisionDistance * 0.5f)     *     0.2f;
+            Vector2f correctionVec = directionToEdge * (abs(closestEdge.distance) + collisionDistance * 0.5f)    *    0.2f;
             
             pointA.pos += correctionVec / 3.f;
 			closestEdge.edge->point1->pos -= correctionVec / 3.f * 2.f;
@@ -618,10 +619,10 @@ int main() {
     //points.push_back({ {579.f, 683.f} });
     points.push_back({ {500.f, 500.f} }); // bottom
     //points.push_back({ {421.f, 683.f} });
-    points.push_back({ {359.f, 630.f} });
-    //points.push_back({ {321.f, 550.f} });
+    //points.push_back({ {359.f, 630.f} });
+    points.push_back({ {400.f, 400.f} });
     //points.push_back({ {359.f, 370.f} });
-    points.push_back({ {421.f, 317.f} });
+    //points.push_back({ {421.f, 317.f} });
     //points.push_back({ {500.f, 300.f} }); // repeat first point if you want closed loop
     Shape shape(points, true);
 
@@ -629,10 +630,11 @@ int main() {
     Point q1 = { {350.f, 100.f} };
     Point q2 = { {350.f, 200.f} };
     Point q3 = { {800.f, 180.f} };
-    Point q4 = { {850.f, 200.f} };
-    Point q5 = { {850.f, 100.f} };
+    Point q4 = { {750.f, 200.f} };
+    Point q5 = { {750.f, 100.f} };
     std::vector<Point> points2 = { q1, q2, /*q3, */q4, q5 };
     Shape shapeB(points2, true);  // second shape
+    Shape shapeC(points2, true);  // second shape
 
     // Beveled square centered at (400,150), width=100, bevel=20
 // Adjust coordinates to match your setup
@@ -687,18 +689,18 @@ int main() {
 
         CalculatePhysics(shape);
         CalculatePhysics(shapeB);
-        //CalculatePhysics(shapeC);
+        CalculatePhysics(shapeC);
 
         HandleShapeCollision(shape, boundaryShape);
         HandleShapeCollision(shapeB, boundaryShape);
-        //HandleShapeCollision(shapeC, boundaryShape);
+        HandleShapeCollision(shapeC, boundaryShape);
 
 		HandleSoftBodyCollision(shape, shapeB);
 		HandleSoftBodyCollision(shapeB, shape);
-		//HandleSoftBodyCollision(shapeC, shape);
-		//HandleSoftBodyCollision(shape, shapeC);
-		//HandleSoftBodyCollision(shapeC, shapeB);
-		//HandleSoftBodyCollision(shapeB, shapeC);
+		HandleSoftBodyCollision(shapeC, shape);
+		HandleSoftBodyCollision(shape, shapeC);
+		HandleSoftBodyCollision(shapeC, shapeB);
+		HandleSoftBodyCollision(shapeB, shapeC);
 
 
 
@@ -731,7 +733,7 @@ int main() {
         DrawShapeOnScreen(window, shape);
         DrawShapeOnScreen(window, boundaryShape);
         DrawShapeOnScreen(window, shapeB);
-        //DrawShapeOnScreen(window, shapeC);
+        DrawShapeOnScreen(window, shapeC);
 
         
         window.setFramerateLimit(1000);
