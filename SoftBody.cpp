@@ -1,6 +1,3 @@
-// FirstC++.cpp : This file contains the 'main' function. Program execution begins and ends there.
-//
-
 #include <SFML/Graphics.hpp>
 #include <optional> // needed for std::optional
 #include <cmath> // needed for sqrt, atan2, sin, cos
@@ -55,10 +52,21 @@ struct Spring
     }
 };
 
+struct RigidPoint
+{
+    Vector2f pos;
+    int order;
+    Color color = Color::Blue;
+
+    RigidPoint(Vector2f pos, int order) : pos(pos), order(order) {}
+};
+
 
 
 class Shape {
     public: vector<Point> points;
+    public: vector<RigidPoint> structurePointsRefe;
+    public: vector<RigidPoint> structurePoints;
     public: bool isSoftBody = true;
     public: float stiffness;
     public: bool staticBody = false;
@@ -84,6 +92,7 @@ public: Vector2f addForce = {0.f, 0.f};
         CalculateCenterOfMass();
         CreateSprings();
         CreateEdges();
+        CalculateStructurePoints();
     }
 
 public:
@@ -145,6 +154,16 @@ private:
             int nextPointIndex = (i + 1) % points.size();
 
             edges.push_back(Edge(&points[pointIndex], &points[nextPointIndex]));
+        }
+    }
+
+private:
+    void CalculateStructurePoints()
+    {
+        for (int i = 0; i < points.size(); i++)
+        {
+            structurePointsRefe.push_back({ points[i].pos - centerOfMass , i});
+            structurePoints.push_back({ points[i].pos - centerOfMass , i });
         }
     }
 
@@ -220,6 +239,15 @@ void DrawShapeOnScreen(RenderWindow& window, const Shape& shape)
         pointCircle.setFillColor(point.color);
         window.draw(pointCircle);
     }
+    
+    for (const auto& strPoint : shape.structurePoints) {
+        pointCircle.setPosition(strPoint.pos);
+        pointCircle.setFillColor(strPoint.color);
+        window.draw(pointCircle);
+    }
+
+    pointCircle.setPosition(shape.centerOfMass);
+    window.draw(pointCircle);
 }
 
 
@@ -243,10 +271,10 @@ void HandleShapeCollision(Shape& innerShape, const Shape& outerShape) {
     for (auto& point : innerShape.points) {
         bool collided = false;
 
-        if (point.pos.x < minX) { point.pos.x = minX; point.velocity.x *= -0.5f; collided = true; }
-        if (point.pos.x > maxX) { point.pos.x = maxX; point.velocity.x *= -0.5f; collided = true; }
-        if (point.pos.y < minY) { point.pos.y = minY; point.velocity.y *= -0.5f; collided = true; }
-        if (point.pos.y > maxY) { point.pos.y = maxY; point.velocity.y *= -0.5f; collided = true; }
+        if (point.pos.x < minX && point.velocity.x < 0) { point.pos.x = minX; point.velocity.x *= -0.5f; collided = true; }
+        if (point.pos.x > maxX && point.velocity.x > 0) { point.pos.x = maxX; point.velocity.x *= -0.5f; collided = true; }
+        if (point.pos.y < minY && point.velocity.y < 0) { point.pos.y = minY; point.velocity.y *= -0.5f; collided = true; }
+        if (point.pos.y > maxY && point.velocity.y > 0) { point.pos.y = maxY; point.velocity.y *= -0.5f; collided = true; }
 
         if (collided) {
             // add torque effect from bounce impulse
@@ -385,7 +413,7 @@ void HandleSoftBodyCollision(Shape& shapeA, Shape& shapeB)
 {
     const float collisionDistance = 5.0f;
     const float restitution = 1.f; 
-    const float friction = 0.4f;    
+    const float friction = 0.1f;    
     int i = 0;
     for (auto& pointA : shapeA.points) {
         // Skip if point has infinite mass (static)
@@ -420,7 +448,6 @@ void HandleSoftBodyCollision(Shape& shapeA, Shape& shapeB)
 
 
             // Take it outt
-            Vector2f correctionVec = directionToEdge * (abs(closestEdge.distance) + collisionDistance * 0.5f)     *     0.2f;
             Vector2f correctionVec = directionToEdge * (abs(closestEdge.distance) + collisionDistance * 0.5f)    *    0.2f;
             
             pointA.pos += correctionVec / 3.f;
@@ -499,6 +526,13 @@ void HandleSoftBodyCollision(Shape& shapeA, Shape& shapeB)
         r = closestEdge.edge->point2->pos - shapeA.centerOfMass;
         torque = r.x * addVelEdge.y - r.y * addVelEdge.x;
         shapeA.torque += torque; 
+
+        // Friction
+        Vector2f relativeVelParallel = relativeVel - relativeVelPerpen;
+        Vector2f frictionForce = relativeVelParallel * friction;
+        pointA.velocity -= frictionForce;
+        closestEdge.edge->point1->velocity += frictionForce / 2.f;
+        closestEdge.edge->point2->velocity += frictionForce / 2.f;
     }
 }
 
@@ -566,7 +600,7 @@ void CalculatePhysics(Shape& shape)
     {
         float angularAcc = shape.torque / shape.momentOfInertia;
         shape.angularVelocity += angularAcc * 1.0f / 100.0f;
-        shape.angularVelocity *= 0.999f;
+        shape.angularVelocity *= 0.99f;
 
         float angle = shape.angularVelocity * 1.0f / 100.0f;
 
@@ -580,10 +614,37 @@ void CalculatePhysics(Shape& shape)
 
                 Vector2f rotated(r.length() * cos(finalAngle), r.length() * sin(finalAngle));
 
-                point.pos = shape.centerOfMass + rotated;
+                point.velocity += (shape.centerOfMass + rotated - point.pos);
             }
         }
         shape.torque = 0.f; // reset torque each frame
+    }
+}
+
+
+void ShapeMatching(Shape& shape)
+{
+    shape.CalculateCenterOfMass();
+
+    int i = 0;
+    float avgAngle = 0;
+    for (auto& strPoint : shape.structurePoints)
+    {
+        strPoint.pos = shape.structurePointsRefe[i].pos + shape.centerOfMass;
+        avgAngle += atan2f(shape.points[i].pos.y, shape.points[i].pos.x);
+        i++;
+    }
+    avgAngle /= shape.points.size();
+
+    for (auto& point : shape.points)
+    {
+        Vector2f r = point.pos - shape.centerOfMass;
+        float initialAngle = atan2f(r.y, r.x);
+        float finalAngle = initialAngle + avgAngle;
+
+        Vector2f rotated(r.length() * cos(finalAngle), r.length() * sin(finalAngle));
+
+        point.velocity += (shape.centerOfMass + rotated - point.pos);
     }
 }
 
@@ -620,7 +681,7 @@ int main() {
     points.push_back({ {500.f, 500.f} }); // bottom
     //points.push_back({ {421.f, 683.f} });
     //points.push_back({ {359.f, 630.f} });
-    points.push_back({ {400.f, 400.f} });
+    //points.push_back({ {400.f, 400.f} });
     //points.push_back({ {359.f, 370.f} });
     //points.push_back({ {421.f, 317.f} });
     //points.push_back({ {500.f, 300.f} }); // repeat first point if you want closed loop
@@ -689,18 +750,21 @@ int main() {
 
         CalculatePhysics(shape);
         CalculatePhysics(shapeB);
-        CalculatePhysics(shapeC);
+        //CalculatePhysics(shapeC);
 
         HandleShapeCollision(shape, boundaryShape);
         HandleShapeCollision(shapeB, boundaryShape);
-        HandleShapeCollision(shapeC, boundaryShape);
+        //HandleShapeCollision(shapeC, boundaryShape);
 
 		HandleSoftBodyCollision(shape, shapeB);
 		HandleSoftBodyCollision(shapeB, shape);
-		HandleSoftBodyCollision(shapeC, shape);
+		/*HandleSoftBodyCollision(shapeC, shape);
 		HandleSoftBodyCollision(shape, shapeC);
 		HandleSoftBodyCollision(shapeC, shapeB);
-		HandleSoftBodyCollision(shapeB, shapeC);
+		HandleSoftBodyCollision(shapeB, shapeC);*/
+
+        ShapeMatching(shape);
+        ShapeMatching(shapeB);
 
 
 
@@ -733,7 +797,7 @@ int main() {
         DrawShapeOnScreen(window, shape);
         DrawShapeOnScreen(window, boundaryShape);
         DrawShapeOnScreen(window, shapeB);
-        DrawShapeOnScreen(window, shapeC);
+        //DrawShapeOnScreen(window, shapeC);
 
         
         window.setFramerateLimit(1000);
