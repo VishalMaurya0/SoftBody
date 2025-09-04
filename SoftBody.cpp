@@ -446,8 +446,6 @@ void HandleSoftBodyCollision(Shape& shapeA, Shape& shapeB)
         {
             pointA.color = Color::Red;
 
-
-            // Take it outt
             Vector2f correctionVec = directionToEdge * (abs(closestEdge.distance) + collisionDistance * 0.5f)    *    0.2f;
             
             pointA.pos += correctionVec / 3.f;
@@ -553,7 +551,7 @@ void CalculatePhysics(Shape& shape)
 
         if (dist > 0.0001f)
         {
-            Vector2f dir = delta / dist; // normalize
+            Vector2f dir = delta.normalized();
             float displacement = dist - spring.restLength;
 
             // Hooke�s law
@@ -631,7 +629,9 @@ void ShapeMatching(Shape& shape)
     for (auto& strPoint : shape.structurePoints)
     {
         strPoint.pos = shape.structurePointsRefe[i].pos + shape.centerOfMass;
-        avgAngle += atan2f(shape.points[i].pos.y, shape.points[i].pos.x);
+        float angle = atan2f(shape.points[i].pos.y, shape.points[i].pos.x);
+        float angle2 = atan2f(shape.structurePointsRefe[i].pos.y, shape.structurePointsRefe[i].pos.x);
+        avgAngle += angle2 - angle;
         i++;
     }
     avgAngle /= shape.points.size();
@@ -644,7 +644,7 @@ void ShapeMatching(Shape& shape)
 
         Vector2f rotated(r.length() * cos(finalAngle), r.length() * sin(finalAngle));
 
-        point.velocity += (shape.centerOfMass + rotated - point.pos);
+        //point.velocity += (shape.centerOfMass + rotated - point.pos);
     }
 }
 
