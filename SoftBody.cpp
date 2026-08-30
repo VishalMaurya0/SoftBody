@@ -72,11 +72,9 @@ class Shape {
     public: bool staticBody = false;
     public: Color color = Color::White;
     
-// Stored Data
     public: vector<Spring> springs;
     public: vector<Edge> edges;
 
-// Dynamic Data
     public: Vector2f centerOfMass;
     public: float angularVelocity = 0.f;
     public: float torque = 0.f;
